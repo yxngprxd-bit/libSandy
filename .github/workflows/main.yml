@@ -1,0 +1,72 @@
+name: Build libSandy Rootless
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-rootless:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout libSandy
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          brew install ldid xz
+
+      - name: Install Theos
+        run: |
+          git clone --recursive https://github.com/opa334/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+
+      - name: Install iOS 16.5 SDK
+        run: |
+          mkdir -p "$HOME/theos/sdks"
+
+          curl -fL \
+            -o /tmp/iPhoneOS16.5.sdk.tar.xz \
+            https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
+
+          tar -xJf /tmp/iPhoneOS16.5.sdk.tar.xz \
+            -C "$HOME/theos/sdks"
+
+          echo "Installed SDKs:"
+          ls -la "$HOME/theos/sdks"
+
+      - name: Add XPC headers to iOS SDK
+        run: |
+          IOS_SDK="$HOME/theos/sdks/iPhoneOS16.5.sdk"
+          MACOS_SDK="$(xcrun --sdk macosx --show-sdk-path)"
+
+          echo "iOS SDK: $IOS_SDK"
+          echo "macOS SDK: $MACOS_SDK"
+
+          mkdir -p "$IOS_SDK/usr/include"
+
+          cp -R \
+            "$MACOS_SDK/usr/include/xpc" \
+            "$IOS_SDK/usr/include/"
+
+          echo "Installed XPC headers:"
+          ls -la "$IOS_SDK/usr/include/xpc"
+
+      - name: Build rootless libSandy
+        run: |
+          make clean
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+
+      - name: Show packages
+        run: |
+          echo "Generated packages:"
+          find packages -type f -name "*.deb" -print
+
+      - name: Upload rootless DEB
+        uses: actions/upload-artifact@v6
+        with:
+          name: libSandy-rootless
+          path: packages/*.deb
+          if-no-files-found: error
