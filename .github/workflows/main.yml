@@ -37,22 +37,96 @@ jobs:
           echo "Installed SDKs:"
           ls -la "$HOME/theos/sdks"
 
-      - name: Add XPC headers to iOS SDK
+      - name: Install XPC compatibility header
         run: |
           IOS_SDK="$HOME/theos/sdks/iPhoneOS16.5.sdk"
-          MACOS_SDK="$(xcrun --sdk macosx --show-sdk-path)"
 
-          echo "iOS SDK: $IOS_SDK"
-          echo "macOS SDK: $MACOS_SDK"
+          mkdir -p "$IOS_SDK/usr/include/xpc"
 
-          mkdir -p "$IOS_SDK/usr/include"
+          cat > "$IOS_SDK/usr/include/xpc/xpc.h" <<'EOF'
+          #ifndef LIBSANDY_XPC_COMPAT_H
+          #define LIBSANDY_XPC_COMPAT_H
 
-          cp -R \
-            "$MACOS_SDK/usr/include/xpc" \
-            "$IOS_SDK/usr/include/"
+          #include <dispatch/dispatch.h>
+          #include <stdint.h>
 
-          echo "Installed XPC headers:"
-          ls -la "$IOS_SDK/usr/include/xpc"
+          #ifdef __cplusplus
+          extern "C" {
+          #endif
+
+          typedef void *xpc_object_t;
+          typedef void *xpc_connection_t;
+          typedef const void *xpc_type_t;
+
+          #define XPC_CONNECTION_MACH_SERVICE_LISTENER (1u << 0)
+          #define XPC_CONNECTION_MACH_SERVICE_PRIVILEGED (1u << 1)
+
+          xpc_connection_t xpc_connection_create_mach_service(
+              const char *name,
+              dispatch_queue_t targetq,
+              uint64_t flags
+          );
+
+          void xpc_connection_set_event_handler(
+              xpc_connection_t connection,
+              void (^handler)(xpc_object_t event)
+          );
+
+          void xpc_connection_resume(xpc_connection_t connection);
+
+          void xpc_connection_send_message(
+              xpc_connection_t connection,
+              xpc_object_t message
+          );
+
+          xpc_object_t xpc_connection_send_message_with_reply_sync(
+              xpc_connection_t connection,
+              xpc_object_t message
+          );
+
+          xpc_object_t xpc_dictionary_create(
+              const char *const *keys,
+              const xpc_object_t *values,
+              size_t count
+          );
+
+          void xpc_dictionary_set_string(
+              xpc_object_t dictionary,
+              const char *key,
+              const char *value
+          );
+
+          void xpc_dictionary_set_bool(
+              xpc_object_t dictionary,
+              const char *key,
+              bool value
+          );
+
+          const char *xpc_dictionary_get_string(
+              xpc_object_t dictionary,
+              const char *key
+          );
+
+          bool xpc_dictionary_get_bool(
+              xpc_object_t dictionary,
+              const char *key
+          );
+
+          xpc_type_t xpc_get_type(xpc_object_t object);
+
+          void xpc_release(xpc_object_t object);
+
+          extern const xpc_type_t XPC_TYPE_ERROR;
+
+          #ifdef __cplusplus
+          }
+          #endif
+
+          #endif
+          EOF
+
+          echo "Created XPC compatibility header:"
+          cat "$IOS_SDK/usr/include/xpc/xpc.h"
 
       - name: Build rootless libSandy
         run: |
